@@ -292,7 +292,7 @@ export const ServiceMenu: React.FC = () => {
               <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder={searchType === 'cib' ? "Informe o Código CIB (ex: CIB-582.750.659-5)" : "Informe a Inscrição Imobiliária (ex: 69461)"}
+                placeholder={searchType === 'cib' ? "Informe o Código CIB (ex: C5SXGEBV)" : "Informe a Inscrição Imobiliária (ex: 69461)"}
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 className="w-full bg-[#141414] text-white placeholder-slate-400 text-sm rounded-md pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#00509D] border border-[#444444] font-mono shadow-inner"
@@ -314,12 +314,12 @@ export const ServiceMenu: React.FC = () => {
               type="button"
               onClick={() => {
                 setSearchType('cib');
-                setSearchValue('CIB-582.750.659-5');
-                handleQuerySinter('cib', 'CIB-582.750.659-5');
+                setSearchValue('C5SXGEBV');
+                handleQuerySinter('cib', 'C5SXGEBV');
               }}
               className="bg-[#3D3D3D] hover:bg-[#00509D] hover:text-white border border-[#4D4D4D] px-2.5 py-1 rounded transition-colors font-mono cursor-pointer shadow-xs"
             >
-              CIB: CIB-582.750.659-5
+              CIB: C5SXGEBV
             </button>
             <button 
               type="button"
