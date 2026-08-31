@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ilheus-dark: #2B2B2B;
+  --color-ilheus-primary: #00509D;
+  --color-ilheus-primary-hover: #003F7A;
+  --color-ilheus-success: #008000;
+  --color-ilheus-success-bg: #E6F4E6;
+  --color-ilheus-success-text: #006400;
+  --color-ilheus-warning: #F2A900;
+  --color-ilheus-danger: #D32F2F;
+}

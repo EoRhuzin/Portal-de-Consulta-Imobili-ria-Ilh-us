@@ -1,0 +1,6 @@
+{
+  "name": "Portal de Consulta Imobiliária Ilhéus",
+  "description": "Portal oficial da Prefeitura Municipal de Ilhéus para consulta de cadastro imobiliário, código CIB e transmissão em tempo real com o SINTER.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
