@@ -8,6 +8,84 @@ import {
 import { QueryResultDisplay } from './SinterQueryResult';
 import { subscribeSinterConfig, SinterConfig, DEFAULT_ILHEUS_CONFIG } from '../lib/firebase';
 
+interface FormattedUserError {
+  title: string;
+  message: string;
+  type: 'not_found' | 'auth' | 'unavailable' | 'invalid_input' | 'general';
+  suggestions?: string[];
+}
+
+function formatUserError(
+  searchType: 'cib' | 'inscricao',
+  val: string,
+  statusCode?: number,
+  rawError?: string
+): FormattedUserError {
+  const cleanVal = val.trim();
+  const label = searchType === 'cib' ? 'o Código CIB' : 'a Inscrição Imobiliária';
+
+  if (
+    statusCode === 404 ||
+    (rawError && (
+      rawError.includes('404') ||
+      rawError.toLowerCase().includes('não localizado') ||
+      rawError.toLowerCase().includes('não foi localizado') ||
+      rawError.toLowerCase().includes('not found')
+    ))
+  ) {
+    return {
+      type: 'not_found',
+      title: 'Imóvel Não Localizado no Cadastro Oficial',
+      message: `Não foi localizado nenhum imóvel cadastrado sob ${label} "${cleanVal}" na base de dados do SINTER / Receita Federal.`,
+      suggestions: [
+        `Verifique se ${label} foi digitado corretamente.`,
+        'Em caso de edificações novas ou desmembramentos recentes, a homologação no cadastro da Receita Federal pode estar em andamento.',
+        'Se necessitar de orientação sobre o cadastro municipal de Ilhéus, consulte a Secretaria de Tributos.'
+      ]
+    };
+  }
+
+  if (
+    statusCode === 401 ||
+    (rawError && (
+      rawError.includes('401') ||
+      rawError.toLowerCase().includes('autenticação') ||
+      rawError.toLowerCase().includes('credenciais')
+    ))
+  ) {
+    return {
+      type: 'auth',
+      title: 'Serviço Temporariamente Indisponível',
+      message: 'Não foi possível autenticar a conexão com a base de dados oficial no momento.',
+      suggestions: [
+        'A conexão de integração segura está em processo de verificação.',
+        'Por favor, tente realizar a consulta novamente em alguns minutos.'
+      ]
+    };
+  }
+
+  if (statusCode === 400) {
+    return {
+      type: 'invalid_input',
+      title: 'Preenchimento Necessário',
+      message: `Por favor, informe ${label} válido no campo de busca.`,
+      suggestions: [
+        'Certifique-se de preencher o campo antes de clicar em Consultar.'
+      ]
+    };
+  }
+
+  return {
+    type: 'unavailable',
+    title: 'Instabilidade Temporária no SINTER',
+    message: 'O sistema oficial da Receita Federal (SINTER) não respondeu ao pedido de consulta no momento.',
+    suggestions: [
+      'Por favor, aguarde alguns minutos e tente realizar a busca novamente.',
+      'Se a instabilidade persistir, consulte novamente em outro horário.'
+    ]
+  };
+}
+
 export const ServiceMenu: React.FC = () => {
   const [searchType, setSearchType] = React.useState<'cib' | 'inscricao'>('cib');
   const [searchValue, setSearchValue] = React.useState('');
@@ -26,7 +104,7 @@ export const ServiceMenu: React.FC = () => {
   // SINTER direct query state
   const [queryLoading, setQueryLoading] = React.useState(false);
   const [queryResult, setQueryResult] = React.useState<any | null>(null);
-  const [queryError, setQueryError] = React.useState<{ error: string; details?: any; statusCode?: number } | null>(null);
+  const [queryError, setQueryError] = React.useState<FormattedUserError | null>(null);
 
   const querySinterDirectClient = async (
     type: 'cib' | 'inscricao',
@@ -39,8 +117,7 @@ export const ServiceMenu: React.FC = () => {
       return {
         success: false,
         statusCode: 401,
-        error: 'Ambiente estático (GitHub Pages) detectado: Credenciais do SERPRO/SINTER (Client ID e Client Secret) não encontradas nas Configurações.',
-        details: 'Para realizar consultas diretamente pelo navegador no GitHub Pages, acesse a aba Configurações e insira o Client ID e Client Secret fornecidos pelo SERPRO.'
+        error: 'Credenciais de integração não configuradas.'
       };
     }
 
@@ -105,8 +182,7 @@ export const ServiceMenu: React.FC = () => {
       return {
         success: false,
         statusCode: 401,
-        error: 'Falha na autenticação OAuth2 com SERPRO/SINTER via navegador no GitHub Pages.',
-        details: lastTokenError || 'Verifique se as credenciais (Client ID / Client Secret) em Configurações estão corretas e ativas no portal SERPRO.'
+        error: 'Falha na autenticação com os servidores oficiais.'
       };
     }
 
@@ -146,7 +222,7 @@ export const ServiceMenu: React.FC = () => {
 
         lastStatus = response.status;
         const text = await response.text();
-        try { lastDetail = JSON.parse(text); } catch { lastDetail = { rawResponse: text }; }
+        try { lastDetail = JSON.parse(text); } catch { lastDetail = null; }
 
         if (response.ok && lastDetail) {
           realData = lastDetail;
@@ -164,9 +240,8 @@ export const ServiceMenu: React.FC = () => {
         success: false,
         statusCode: lastStatus || 404,
         error: lastStatus === 404
-          ? `Imóvel (${type === 'cib' ? 'CIB' : 'Inscrição'}) "${cleanValue}" não foi localizado na base oficial do SINTER (HTTP 404).`
-          : `A API oficial do SINTER retornou código HTTP ${lastStatus} no GitHub Pages.`,
-        details: lastDetail
+          ? `Imóvel não localizado`
+          : `Erro de comunicação com o servidor`
       };
     }
   };
@@ -220,17 +295,12 @@ export const ServiceMenu: React.FC = () => {
       if (result && result.success && result.data) {
         setQueryResult(result.data);
       } else {
-        setQueryError({
-          error: result?.error || `A API do SINTER/SERPRO retornou erro HTTP ${status || result?.statusCode || 500}`,
-          details: result?.details,
-          statusCode: result?.statusCode || status || 500
-        });
+        const formatted = formatUserError(type, val, result?.statusCode || status || 500, result?.error);
+        setQueryError(formatted);
       }
     } catch (err: any) {
-      setQueryError({
-        error: 'Erro na execução da consulta imobiliária.',
-        details: err.message
-      });
+      const formatted = formatUserError(type, val, 500, err?.message);
+      setQueryError(formatted);
     } finally {
       setQueryLoading(false);
     }
@@ -339,37 +409,56 @@ export const ServiceMenu: React.FC = () => {
       {/* SINTER Direct Query Loading */}
       {queryLoading && (
         <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-md flex flex-col items-center justify-center space-y-4">
-          <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
-          <div className="text-center">
-            <h4 className="font-bold text-slate-800 text-sm">Consultando API Oficial do SINTER...</h4>
-            <p className="text-xs text-slate-500 mt-1">Conectando aos servidores da Receita Federal com as credenciais cadastradas no banco consulta-imobiliaria-ilheus...</p>
+          <RefreshCw className="w-8 h-8 text-[#00509D] animate-spin" />
+          <div className="text-center space-y-1">
+            <h4 className="font-bold text-slate-800 text-sm">Consultando Base Oficial SINTER...</h4>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">Conectando aos servidores da Receita Federal do Brasil para consultar o cadastro do imóvel...</p>
           </div>
         </div>
       )}
 
-      {/* SINTER Direct Query Errors */}
+      {/* SINTER Friendly Citizen Query Errors */}
       {queryError && (
-        <div className={`rounded-xl p-6 shadow-sm space-y-3 border ${
-          queryError.statusCode === 404
-            ? 'bg-amber-50 border-amber-200 text-amber-900'
-            : 'bg-rose-50 border-rose-200 text-rose-950'
+        <div className={`rounded-xl p-6 sm:p-7 shadow-sm border transition-all ${
+          queryError.type === 'not_found'
+            ? 'bg-amber-50/90 border-amber-200/90 text-amber-950'
+            : queryError.type === 'invalid_input'
+            ? 'bg-blue-50/90 border-blue-200/90 text-blue-950'
+            : 'bg-rose-50/90 border-rose-200/90 text-rose-950'
         }`}>
-          <div className="flex items-start space-x-3">
-            <AlertCircle className={`w-6 h-6 shrink-0 mt-0.5 ${
-              queryError.statusCode === 404 ? 'text-amber-600' : 'text-rose-600'
-            }`} />
-            <div className="space-y-1">
-              <h4 className="font-bold text-sm">
-                {queryError.statusCode === 404
-                  ? 'Imóvel Não Localizado na Base Oficial do SINTER'
-                  : queryError.statusCode === 401
-                  ? 'Falha de Autenticação no SERPRO / SINTER'
-                  : 'Erro na Consulta SINTER Oficial'}
-              </h4>
-              <p className="text-xs leading-relaxed">{queryError.error}</p>
-              {queryError.details && (
-                <div className="mt-2 p-3 bg-black/5 rounded-lg border border-black/10 text-[11px] font-mono whitespace-pre-wrap overflow-x-auto">
-                  {typeof queryError.details === 'string' ? queryError.details : JSON.stringify(queryError.details, null, 2)}
+          <div className="flex items-start space-x-3.5">
+            <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+              queryError.type === 'not_found'
+                ? 'bg-amber-100 text-amber-700'
+                : queryError.type === 'invalid_input'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-rose-100 text-rose-700'
+            }`}>
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="space-y-3 flex-1">
+              <div>
+                <h4 className="font-bold text-base text-slate-900">
+                  {queryError.title}
+                </h4>
+                <p className="text-sm text-slate-700 mt-1 leading-relaxed">
+                  {queryError.message}
+                </p>
+              </div>
+
+              {queryError.suggestions && queryError.suggestions.length > 0 && (
+                <div className="pt-3 border-t border-slate-200/80">
+                  <h5 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                    Orientação ao Cidadão / Usuário:
+                  </h5>
+                  <ul className="space-y-1.5 text-xs text-slate-700">
+                    {queryError.suggestions.map((sug, idx) => (
+                      <li key={idx} className="flex items-start space-x-2">
+                        <span className="text-amber-600 font-bold shrink-0">•</span>
+                        <span>{sug}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>

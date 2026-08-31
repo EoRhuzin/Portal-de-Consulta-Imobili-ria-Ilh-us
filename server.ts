@@ -541,9 +541,8 @@ async function startServer() {
         success: false,
         statusCode: lastStatus || 404,
         error: lastStatus === 404 
-          ? `Imóvel (${type === 'cib' ? 'CIB' : 'Inscrição'}) "${cleanValue}" não localizado no cadastro oficial do SINTER (HTTP 404).`
-          : `A API oficial do SINTER retornou resposta de erro (HTTP ${lastStatus}).`,
-        details: lastResponseData
+          ? `Imóvel (${type === 'cib' ? 'CIB' : 'Inscrição'}) "${cleanValue}" não localizado no cadastro oficial do SINTER.`
+          : `Serviço de consulta temporariamente indisponível.`
       });
     }
   });
