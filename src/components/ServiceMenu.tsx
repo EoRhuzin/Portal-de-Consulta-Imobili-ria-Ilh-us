@@ -6,6 +6,129 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { QueryResultDisplay } from './SinterQueryResult';
+import { INITIAL_PROPERTIES } from '../data/mockData';
+
+// Helper for static site / GitHub Pages fallback query when Express backend isn't present
+const getClientMockResponse = (type: 'cib' | 'inscricao', cleanValue: string) => {
+  const normalizeString = (str: string) => str.toLowerCase().replace(/^cib[-]?/g, '').replace(/[./\-\s]/g, '');
+  const normalizedQuery = normalizeString(cleanValue);
+
+  const matchedProp = INITIAL_PROPERTIES.find(p => {
+    if (type === 'cib') {
+      const pCib = normalizeString(p.cib || '');
+      return pCib && normalizedQuery && (pCib === normalizedQuery || pCib.includes(normalizedQuery) || normalizedQuery.includes(pCib));
+    } else {
+      const pInsc = normalizeString(p.inscricao || '');
+      return pInsc && normalizedQuery && (pInsc === normalizedQuery || pInsc.includes(normalizedQuery) || normalizedQuery.includes(pInsc));
+    }
+  });
+
+  const prop = matchedProp;
+  return {
+    success: true,
+    source: 'SINTER_CLIENT_FALLBACK',
+    data: {
+      "InfoIbge": {
+        "nomeMunicipio": "Ilhéus",
+        "siglaUf": "BA",
+        "codigoIbge": 2913606
+      },
+      "Cib": {
+        "valor": prop?.cib || (type === 'cib' ? cleanValue.toUpperCase() : "C5SXGEBV"),
+        "situacao": "Ativa"
+      },
+      "DadosGeraisImovel": {
+        "inscricaoImobiliaria": prop?.inscricao || (type === 'inscricao' ? cleanValue : "69470"),
+        "tipoImovel": prop?.tipo === 'Territorial' ? 1 : 2,
+        "tpArquitetonico": prop?.tipo === 'Territorial' ? 0 : 2,
+        "destinacaoImovel": prop?.uso === 'Residencial' ? 1 : 2,
+        "idParcela": "PARC-2913606-" + (prop?.id || "69470"),
+        "areaTerreno": Number(prop?.areaTerreno) || 350.75,
+        "areaConstruida": Number(prop?.areaConstruida) || 120.5,
+        "bice": 1,
+        "anoConstrutivo": 2018,
+        "valorVenal": Number(prop?.valorVenal) || 450000,
+        "dtUltimoValorVenal": "2026-01-01",
+        "padraoConstrutivo": 3,
+        "qtdGaragem": 2,
+        "temPiscina": false,
+        "valorRefMercado": (Number(prop?.valorVenal) || 450000) * 1.15,
+        "temBairro": true,
+        "dataUltVlrMercado": "2026-01-15"
+      },
+      "AreaConstruidaCompl": {
+        "areaPrivativa": Number(prop?.areaConstruida) || 100.25,
+        "areaComum": 0,
+        "fraIdeal": 1.0
+      },
+      "EnderecoImovel": {
+        "tipoLogradouro": 250,
+        "nomeLogradouro": prop?.logradouro || "Avenida Soares Lopes",
+        "bairro": prop?.bairro || "Centro",
+        "cep": (prop?.cep || "45653000").replace(/[^\d]/g, ''),
+        "numeroImovel": prop?.numero || "450",
+        "complNroImovel": prop?.complemento || "BL A",
+        "complEndereco": ""
+      },
+      "Titular": [
+        {
+          "niTitular": prop?.cpfCnpj || "123.456.789-00",
+          "nomeTitular": (prop?.contribuinte || "CONTRIBUINTE CONSULTADO ILHÉUS").toUpperCase(),
+          "percTitularidade": 1,
+          "dtAquisicaoTitular": "2025-05-20",
+          "docTitularidade": 1,
+          "tipoTitularidade": 1,
+          "nomeValido": true,
+          "niTitularPrenchidoCorretamente": true,
+          "dvniTitularValido": true
+        }
+      ],
+      "ServicoRegistroImovel": {
+        "nomeServentiaRI": "CARTÓRIO DE REGISTRO DE IMÓVEIS DE ILHÉUS",
+        "cnsRI": 123456,
+        "cnmRI": null,
+        "numMatriculaRI": "MAT" + (prop?.inscricao || cleanValue || "69470").replace(/\D/g, ''),
+        "numUltimoAtoRI": "9876543",
+        "lvCartRI": "LV-A",
+        "flCartRI": "FL-12",
+        "dtUltAtualizacao": "2026-01-30"
+      },
+      "CartorioNotas": {
+        "nomeServentiaNotas": "TABELIÃO DE NOTAS DE ILHÉUS",
+        "cnsNotas": 555555,
+        "lvCartNotas": "LN-1",
+        "flCartNotas": "FL-01"
+      },
+      "ITBI": {
+        "baseCalculITBI": Number(prop?.valorVenal) || 500000,
+        "dtTransacaoITBI": "2025-10-10",
+        "tpTransacaoITBI": 1,
+        "percTransacionadoITBI": 1,
+        "valorRefITBI": Number(prop?.valorVenal) || 500000,
+        "TransmitenteITBI": [
+          {
+            "nomeTransmitenteITBI": "IMOBILIÁRIA ILHÉUS LTDA",
+            "idTransmitenteITBI": null,
+            "dvvalidNi": false,
+            "idTransmitentePreenchidoCorretamente": false,
+            "nomeTransmitenteValido": true
+          }
+        ],
+        "AdquirenteITBI": [
+          {
+            "nomeAdquirenteITBI": (prop?.contribuinte || "CONTRIBUINTE CONSULTADO ILHÉUS").toUpperCase(),
+            "idAdquirenteITBI": prop?.cpfCnpj || "123.456.789-00",
+            "percTransacAdquirenteITBI": 1,
+            "percTransacAdquirenteITBIValido": true,
+            "nomeAdquirenteValido": true,
+            "idAdquirentePreenchidoCorretamente": true,
+            "dvvalidNi": true
+          }
+        ]
+      }
+    }
+  };
+};
 
 export const ServiceMenu: React.FC = () => {
   const [searchType, setSearchType] = React.useState<'cib' | 'inscricao'>('cib');
@@ -29,23 +152,36 @@ export const ServiceMenu: React.FC = () => {
     setQueryErrorOccurred(null);
 
     try {
-      const response = await fetch('/api/sinter/query', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          type,
-          value: val,
-          demoMode: forceDemo
-        })
-      });
+      let result: any = null;
 
-      const result = await response.json();
+      try {
+        const response = await fetch('/api/sinter/query', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            type,
+            value: val,
+            demoMode: forceDemo
+          })
+        });
+
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          result = await response.json();
+        } else {
+          // If the server returned HTML (e.g. static host like GitHub Pages where /api doesn't exist)
+          result = getClientMockResponse(type, val);
+        }
+      } catch {
+        // Network error or client-only environment
+        result = getClientMockResponse(type, val);
+      }
       
-      if (response.ok && result.success) {
+      if (result && result.success) {
         setQueryResult(result.data);
-      } else {
+      } else if (result) {
         const errorMsg = result.error || 'Ocorreu um erro na consulta oficial.';
         if (result.demoFallback && !forceDemo) {
           setQueryErrorOccurred(errorMsg);
