@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Configurações do SINTER (código IBGE e credenciais)
+    match /configuracoes/{document=**} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Permitir leitura pública de dados cadastrais
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

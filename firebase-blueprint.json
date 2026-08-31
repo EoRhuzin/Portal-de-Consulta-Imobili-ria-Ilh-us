@@ -1,0 +1,23 @@
+{
+  "entities": {
+    "configuracoes_sinter": {
+      "title": "Configurações de Conexão SINTER",
+      "description": "Credenciais, Código IBGE e Tokens para autenticação com a API oficial do SINTER",
+      "type": "document",
+      "path": "configuracoes/sinter_ilheus",
+      "schema": {
+        "codigoIbge": { "type": "number", "description": "Código IBGE do município de Ilhéus (2913606)" },
+        "nomeMunicipio": { "type": "string", "description": "Nome do município (Ilhéus)" },
+        "uf": { "type": "string", "description": "UF (BA)" },
+        "clientId": { "type": "string", "description": "Client ID da Prefeitura junto ao SERPRO / SINTER" },
+        "clientSecret": { "type": "string", "description": "Client Secret da Prefeitura" },
+        "tokenUrl": { "type": "string", "description": "Endpoint OAuth2 de obtenção de token (SERPRO/RFB)" },
+        "sinterApiUrl": { "type": "string", "description": "URL base da API oficial do SINTER" },
+        "certThumbprint": { "type": "string", "description": "Identificador do Certificado e-CNPJ" },
+        "tokenAtual": { "type": "string", "description": "Token JWT de sessão obtido" },
+        "tokenValidoAte": { "type": "string", "description": "Data/Hora de expiração do Token" },
+        "modificadoEm": { "type": "string", "description": "Data da última atualização" }
+      }
+    }
+  }
+}

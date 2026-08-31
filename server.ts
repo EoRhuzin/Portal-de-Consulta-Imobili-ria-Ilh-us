@@ -27,8 +27,8 @@ export interface SinterLog {
 }
 
 let sinterConfig: SinterConfig = {
-  clientId: process.env.SINTER_CLIENT_ID || 'd007a9e9-e943-425e-8990-6d2eacbdd721',
-  clientSecret: process.env.SINTER_CLIENT_SECRET || 'f3CXnDB8bElI4t090nmHZznkKpG17efD',
+  clientId: process.env.SINTER_CLIENT_ID || '',
+  clientSecret: process.env.SINTER_CLIENT_SECRET || '',
   codigoIbge: process.env.SINTER_CODIGO_IBGE || '2913606'
 };
 
@@ -365,425 +365,185 @@ async function startServer() {
 
   // Query a single UI by CIB or by IBGE + Inscrição
   app.post('/api/sinter/query', async (req, res) => {
-    const { type, value, ibge, demoMode } = req.body || {};
+    const { 
+      type, 
+      value, 
+      ibge, 
+      clientId: bodyClientId, 
+      clientSecret: bodyClientSecret, 
+      tokenUrl: bodyTokenUrl, 
+      sinterApiUrl: bodyApiUrl 
+    } = req.body || {};
 
     if (!type || !value) {
-      res.status(400).json({ error: 'Os campos "type" (cib ou inscricao) e "value" são obrigatórios.' });
+      res.status(400).json({ 
+        success: false,
+        error: 'Os campos "type" (cib ou inscricao) e "value" são obrigatórios.' 
+      });
       return;
     }
 
     const cleanValue = String(value).trim();
-    const queryIbge = ibge ? String(ibge).trim() : sinterConfig.codigoIbge;
-    
-    // Normalize string by converting to lowercase, removing leading "cib" prefix, and removing punctuation
-    const normalizeString = (str: string) => {
-      return str
-        .toLowerCase()
-        .replace(/^cib[-]?/g, '')
-        .replace(/[./\-\s]/g, '');
-    };
+    const queryIbge = ibge ? String(ibge).trim() : (sinterConfig.codigoIbge || '2913606');
+    const clientId = bodyClientId || sinterConfig.clientId || process.env.SINTER_CLIENT_ID || '';
+    const clientSecret = bodyClientSecret || sinterConfig.clientSecret || process.env.SINTER_CLIENT_SECRET || '';
 
-    const normalizedQuery = normalizeString(cleanValue);
-
-    // Check if the CIB or Inscrição exists in our database
-    const matchedProp = databaseProperties.find(p => {
-      if (type === 'cib') {
-        const pCib = normalizeString(p.cib || '');
-        return pCib && normalizedQuery && (pCib === normalizedQuery || pCib.includes(normalizedQuery) || normalizedQuery.includes(pCib));
-      } else {
-        const pInsc = normalizeString(p.inscricao || '');
-        return pInsc && normalizedQuery && (pInsc === normalizedQuery || pInsc.includes(normalizedQuery) || normalizedQuery.includes(pInsc));
-      }
-    });
-
-    const isTestExample = type === 'cib'
-      ? (normalizedQuery === 'c5sxgebv' || normalizedQuery.includes('c5sxgebv') || 'c5sxgebv'.includes(normalizedQuery))
-      : (normalizedQuery === '69470' || normalizedQuery.includes('69470') || '69470'.includes(normalizedQuery));
-
-    const hasValidDemo = !!(matchedProp || isTestExample);
-
-    // Define the official URL
-    let queryUrl = '';
-    if (type === 'cib') {
-      queryUrl = `https://api.sinter.receitafederal.gov.br/api/v1/ui/${cleanValue}`;
-    } else {
-      queryUrl = `https://api.sinter.receitafederal.gov.br/api/v1/${queryIbge}/ui/${cleanValue}`;
+    // If credentials are missing, return 401 directly without generating fake data
+    if (!clientId || !clientSecret) {
+      res.status(401).json({
+        success: false,
+        statusCode: 401,
+        error: 'Credenciais do SERPRO/SINTER (Client ID e Client Secret) não estão configuradas.',
+        details: 'É necessário cadastrar um Client ID e Client Secret válidos no banco Firestore "consulta-imobiliaria-ilheus" (coleção configuracoes/sinter_ilheus) para consultar a base oficial da Receita Federal.'
+      });
+      return;
     }
 
     const timestamp = new Date().toISOString();
 
-    // 1. Get Access Token first
-    const tokenUrl = 'https://api.sinter.receitafederal.gov.br/v1/keycloak/oidc/token';
+    // 1. Obtain OAuth token from official SERPRO/SINTER token endpoints
+    const tokenUrlsToTry = [
+      bodyTokenUrl,
+      'https://gateway.apivalidacao.serpro.gov.br/token',
+      'https://gateway.apiserpro.serpro.gov.br/token',
+      'https://api.sinter.receitafederal.gov.br/v1/keycloak/oidc/token',
+      'https://api.receitafederal.gov.br/prr-sinter/v1/keycloak/oidc/token'
+    ].filter((url, index, self) => url && self.indexOf(url) === index);
+
     let token: string | null = null;
-    let authError: string | null = null;
+    let lastTokenError = '';
 
-    try {
-      const authParams = new URLSearchParams();
-      authParams.append('grant_type', 'client_credentials');
-      authParams.append('client_id', sinterConfig.clientId);
-      authParams.append('client_secret', sinterConfig.clientSecret);
-
-      const tokenRes = await fetch(tokenUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'CadSinter-Municipal-Backend/1.0'
-        },
-        body: authParams.toString()
-      });
-
-      if (tokenRes.ok) {
-        const tokenData = await tokenRes.json();
-        token = tokenData.access_token;
-      } else {
-        authError = await tokenRes.text();
-      }
-    } catch (err: any) {
-      authError = err.message;
-    }
-
-    // Prepare custom response matching the exact SINTER UI schema provided
-    const getMockResponse = (prop?: Property) => {
-      if (prop) {
-        return {
-          "InfoIbge": {
-            "nomeMunicipio": "Município Local",
-            "siglaUf": "SP",
-            "codigoIbge": Number(queryIbge) || 3500000
+    for (const tokenUrl of tokenUrlsToTry) {
+      try {
+        // Method A: Basic Auth header
+        const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+        const resA = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${basicAuth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'CadSinter-Municipal-Backend/1.0'
           },
-          "Cib": {
-            "valor": prop.cib || cleanValue,
-            "situacao": "Ativa"
-          },
-          "DadosGeraisImovel": {
-            "inscricaoImobiliaria": prop.inscricao || cleanValue,
-            "tipoImovel": prop.tipo === 'Territorial' ? 1 : 2,
-            "tpArquitetonico": prop.tipo === 'Territorial' ? 0 : 2,
-            "destinacaoImovel": prop.uso === 'Residencial' ? 1 : 2,
-            "idParcela": "PARC-" + prop.id,
-            "areaTerreno": Number(prop.areaTerreno) || 350.75,
-            "areaConstruida": Number(prop.areaConstruida) || 120.5,
-            "bice": 1,
-            "anoConstrutivo": 2018,
-            "valorVenal": Number(prop.valorVenal) || 450000,
-            "dtUltimoValorVenal": "2026-01-01",
-            "padraoConstrutivo": 3,
-            "qtdGaragem": 2,
-            "temPiscina": false,
-            "valorRefMercado": (Number(prop.valorVenal) || 450000) * 1.15,
-            "temBairro": true,
-            "dataUltVlrMercado": "2026-01-15"
-          },
-          "AreaConstruidaCompl": {
-            "areaPrivativa": Number(prop.areaConstruida) || 100.25,
-            "areaComum": 0,
-            "fraIdeal": 1.0
-          },
-          "EnderecoImovel": {
-            "tipoLogradouro": 250, // Default for Rua
-            "nomeLogradouro": prop.logradouro || "Avenida Principal",
-            "bairro": prop.bairro || "Centro",
-            "cep": (prop.cep || "70040900").replace(/[^\d]/g, ''),
-            "numeroImovel": prop.numero || "1234",
-            "complNroImovel": prop.complemento || "",
-            "complEndereco": ""
-          },
-          "Titular": [
-            {
-              "niTitular": prop.cpfCnpj || null,
-              "nomeTitular": (prop.contribuinte || "CONTRIBUINTE").toUpperCase(),
-              "percTitularidade": 1,
-              "dtAquisicaoTitular": "2025-05-20",
-              "docTitularidade": 1,
-              "tipoTitularidade": 1,
-              "nomeValido": true,
-              "niTitularPrenchidoCorretamente": true,
-              "dvniTitularValido": true
-            }
-          ],
-          "ServicoRegistroImovel": {
-            "nomeServentiaRI": "CARTÓRIO DE REGISTRO DE IMÓVEIS LOCAL",
-            "cnsRI": 123456,
-            "cnmRI": null,
-            "numMatriculaRI": "MAT" + (prop.inscricao || "123").replace(/\D/g, ''),
-            "numUltimoAtoRI": "9876543",
-            "lvCartRI": "LV-A",
-            "flCartRI": "FL-12",
-            "dtUltAtualizacao": "2026-01-30"
-          },
-          "CartorioNotas": {
-            "nomeServentiaNotas": "TABELIÃO DE NOTAS LOCAL",
-            "cnsNotas": 555555,
-            "lvCartNotas": "LN-1",
-            "flCartNotas": "FL-01"
-          },
-          "ITBI": {
-            "baseCalculITBI": Number(prop.valorVenal) || 500000,
-            "dtTransacaoITBI": "2025-10-10",
-            "tpTransacaoITBI": 1,
-            "percTransacionadoITBI": 1,
-            "valorRefITBI": Number(prop.valorVenal) || 500000,
-            "TransmitenteITBI": [
-              {
-                "nomeTransmitenteITBI": "CONSTRUTORA E INCORPORADORA SA",
-                "idTransmitenteITBI": null,
-                "dvvalidNi": false,
-                "idTransmitentePreenchidoCorretamente": false,
-                "nomeTransmitenteValido": true
-              }
-            ],
-            "AdquirenteITBI": [
-              {
-                "nomeAdquirenteITBI": (prop.contribuinte || "CONTRIBUINTE").toUpperCase(),
-                "idAdquirenteITBI": prop.cpfCnpj || null,
-                "percTransacAdquirenteITBI": 1,
-                "percTransacAdquirenteITBIValido": true,
-                "nomeAdquirenteValido": true,
-                "idAdquirentePreenchidoCorretamente": true,
-                "dvvalidNi": true
-              }
-            ]
-          }
-        };
-      }
-
-      return {
-        "InfoIbge": {
-          "nomeMunicipio": type === 'cib' ? "Belo Horizonte" : "Município de Envio",
-          "siglaUf": type === 'cib' ? "MG" : "BA",
-          "codigoIbge": Number(queryIbge) || 3106200
-        },
-        "Cib": {
-          "valor": type === 'cib' ? cleanValue : "CJNJJ50G",
-          "situacao": "Ativa"
-        },
-        "DadosGeraisImovel": {
-          "inscricaoImobiliaria": type === 'inscricao' ? cleanValue : "1234567890123456789012310",
-          "tipoImovel": 3,
-          "tpArquitetonico": 11,
-          "destinacaoImovel": 2,
-          "idParcela": "PARC-123456",
-          "areaTerreno": 350.75,
-          "areaConstruida": 120.5,
-          "bice": 1,
-          "anoConstrutivo": 2005,
-          "valorVenal": 450000,
-          "dtUltimoValorVenal": "2024-12-01",
-          "padraoConstrutivo": 3,
-          "qtdGaragem": 2,
-          "temPiscina": false,
-          "valorRefMercado": 520000,
-          "temBairro": true,
-          "dataUltVlrMercado": "2024-12-15"
-        },
-        "AreaConstruidaCompl": {
-          "areaPrivativa": 100.25,
-          "areaComum": 20.25,
-          "fraIdeal": 0.5
-        },
-        "EnderecoImovel": {
-          "tipoLogradouro": 100,
-          "nomeLogradouro": "Avenida Brasil",
-          "bairro": "Centro",
-          "cep": "70040900",
-          "numeroImovel": "1234",
-          "complNroImovel": "BL A",
-          "complEndereco": "APT 201"
-        },
-        "Titular": [
-          {
-            "niTitular": null,
-            "nomeTitular": "JOAO DA SILVA",
-            "percTitularidade": 1,
-            "dtAquisicaoTitular": "2023-05-20",
-            "docTitularidade": 1,
-            "tipoTitularidade": 1,
-            "nomeValido": true,
-            "niTitularPrenchidoCorretamente": false,
-            "dvniTitularValido": false
-          }
-        ],
-        "ServicoRegistroImovel": {
-          "nomeServentiaRI": "CARTORIO REGISTRO GERAL",
-          "cnsRI": 123456,
-          "cnmRI": null,
-          "numMatriculaRI": "MAT123456789",
-          "numUltimoAtoRI": "9876543",
-          "lvCartRI": "LV01",
-          "flCartRI": "FL02",
-          "dtUltAtualizacao": "2024-11-30"
-        },
-        "CartorioNotas": {
-          "nomeServentiaNotas": "CARTORIO NOTAS CENTRAL",
-          "cnsNotas": 555555,
-          "lvCartNotas": "LN01",
-          "flCartNotas": "FL01"
-        },
-        "ITBI": {
-          "baseCalculITBI": 500000,
-          "dtTransacaoITBI": "2024-10-10",
-          "tpTransacaoITBI": 1,
-          "percTransacionadoITBI": 1,
-          "valorRefITBI": 500000,
-          "TransmitenteITBI": [
-            {
-              "nomeTransmitenteITBI": "MARIA PEREIRA",
-              "idTransmitenteITBI": null,
-              "dvvalidNi": false,
-              "idTransmitentePreenchidoCorretamente": false,
-              "nomeTransmitenteValido": true
-            }
-          ],
-          "AdquirenteITBI": [
-            {
-              "nomeAdquirenteITBI": "JOAO DA SILVA",
-              "idAdquirenteITBI": null,
-              "percTransacAdquirenteITBI": 1,
-              "percTransacAdquirenteITBIValido": true,
-              "nomeAdquirenteValido": true,
-              "idAdquirentePreenchidoCorretamente": false,
-              "dvvalidNi": false
-            }
-          ]
-        }
-      };
-    };
-
-    if (demoMode) {
-      if (!hasValidDemo) {
-        res.status(404).json({
-          success: false,
-          error: `O ${type === 'cib' ? 'CIB' : 'número de Inscrição'} "${value}" não foi localizado no SINTER.`,
-          statusCode: 404
+          body: 'grant_type=client_credentials'
         });
-        return;
+
+        if (resA.ok) {
+          const data = await resA.json();
+          if (data && data.access_token) {
+            token = data.access_token;
+            break;
+          }
+        }
+
+        // Method B: Body parameters
+        const params = new URLSearchParams();
+        params.append('grant_type', 'client_credentials');
+        params.append('client_id', clientId);
+        params.append('client_secret', clientSecret);
+
+        const resB = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'CadSinter-Municipal-Backend/1.0'
+          },
+          body: params.toString()
+        });
+
+        if (resB.ok) {
+          const data = await resB.json();
+          if (data && data.access_token) {
+            token = data.access_token;
+            break;
+          }
+        } else {
+          lastTokenError = await resB.text();
+        }
+      } catch (err: any) {
+        lastTokenError = err.message;
       }
-      // Direct success preview requested
-      res.json({
-        success: true,
-        source: 'DEMO_TEMPLATE',
-        message: 'Consulta de homologação simulada com sucesso utilizando o esquema oficial do SINTER.',
-        data: getMockResponse(matchedProp)
-      });
-      return;
     }
 
     if (!token) {
-      // Authentication failed, but we must return detailed info
-      const logEntry: SinterLog = {
-        id: `sinter-query-auth-err-${Date.now()}`,
-        timestamp,
-        type: 'QUERY',
-        status: 'ERROR',
-        url: queryUrl,
-        responseExcerpt: `Falha na obtenção do token OAuth2: ${authError}`
-      };
-      sinterLogs.unshift(logEntry);
-
-      if (!hasValidDemo) {
-        res.status(404).json({
-          success: false,
-          error: `O ${type === 'cib' ? 'CIB' : 'número de Inscrição'} "${value}" não foi localizado no SINTER.`,
-          statusCode: 404
-        });
-        return;
-      }
-
       res.status(401).json({
         success: false,
-        error: 'Erro de autenticação automática no SINTER. Por favor, verifique as credenciais do município.',
-        details: authError,
-        demoFallback: getMockResponse(matchedProp) // Send the template as a helper for local development!
+        statusCode: 401,
+        error: 'Falha na autenticação OAuth2 com os servidores do SERPRO / SINTER.',
+        details: lastTokenError || 'As credenciais (Client ID / Client Secret) foram recusadas pelo portal do SERPRO/Receita Federal.'
       });
       return;
     }
 
-    // 2. Query SINTER API
-    try {
-      const response = await fetch(queryUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json',
-          'User-Agent': 'CadSinter-Municipal-Backend/1.0'
-        }
-      });
+    // 2. Query official SINTER API
+    const queryUrlsToTry: string[] = [];
+    if (bodyApiUrl && bodyApiUrl.trim()) {
+      const base = bodyApiUrl.trim().replace(/\/$/, '');
+      queryUrlsToTry.push(type === 'cib' ? `${base}/${encodeURIComponent(cleanValue)}` : `${base}/${encodeURIComponent(queryIbge)}/${encodeURIComponent(cleanValue)}`);
+    }
 
-      const responseText = await response.text();
-      let responseData: any;
+    // Official Receita Federal / SINTER Endpoints
+    queryUrlsToTry.push(type === 'cib'
+      ? `https://api.sinter.receitafederal.gov.br/api/v1/ui/${encodeURIComponent(cleanValue)}`
+      : `https://api.sinter.receitafederal.gov.br/api/v1/${encodeURIComponent(queryIbge)}/ui/${encodeURIComponent(cleanValue)}`
+    );
+
+    queryUrlsToTry.push(type === 'cib'
+      ? `https://api.receitafederal.gov.br/prr-sinter/api/v1/ui/${encodeURIComponent(cleanValue)}`
+      : `https://api.receitafederal.gov.br/prr-sinter/api/v1/${encodeURIComponent(queryIbge)}/ui/${encodeURIComponent(cleanValue)}`
+    );
+
+    queryUrlsToTry.push(type === 'cib'
+      ? `https://gateway.apiserpro.serpro.gov.br/sinter/v1/ui/${encodeURIComponent(cleanValue)}`
+      : `https://gateway.apiserpro.serpro.gov.br/sinter/v1/${encodeURIComponent(queryIbge)}/ui/${encodeURIComponent(cleanValue)}`
+    );
+
+    let realData: any = null;
+    let lastStatus = 0;
+    let lastResponseData: any = null;
+
+    for (const queryUrl of queryUrlsToTry) {
       try {
-        responseData = JSON.parse(responseText);
-      } catch {
-        responseData = { rawResponse: responseText };
-      }
-
-      const isSuccess = response.ok;
-
-      // Log the query
-      const logEntry: SinterLog = {
-        id: `sinter-query-${Date.now()}`,
-        timestamp,
-        type: 'QUERY',
-        status: isSuccess ? 'SUCCESS' : 'ERROR',
-        statusCode: response.status,
-        url: queryUrl,
-        responseExcerpt: responseText.length > 500 ? responseText.substring(0, 500) + '...' : responseText
-      };
-      sinterLogs.unshift(logEntry);
-
-      if (isSuccess) {
-        res.json({
-          success: true,
-          source: 'PRODUCTION_SINTER',
-          statusCode: response.status,
-          data: responseData
+        const response = await fetch(queryUrl, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/json',
+            'User-Agent': 'CadSinter-Municipal-Backend/1.0'
+          }
         });
-      } else {
-        if (!hasValidDemo) {
-          res.status(404).json({
-            success: false,
-            error: `O ${type === 'cib' ? 'CIB' : 'número de Inscrição'} "${value}" não foi localizado no SINTER.`,
-            statusCode: 404,
-            details: responseData
-          });
-          return;
+
+        lastStatus = response.status;
+        const responseText = await response.text();
+        
+        try {
+          lastResponseData = JSON.parse(responseText);
+        } catch {
+          lastResponseData = { rawResponse: responseText };
         }
 
-        res.status(response.status).json({
-          success: false,
-          error: `O servidor oficial do SINTER retornou código de erro ${response.status}.`,
-          statusCode: response.status,
-          details: responseData,
-          demoFallback: getMockResponse(matchedProp) // Send the template as helper for sandbox demonstration
-        });
+        if (response.ok && lastResponseData) {
+          realData = lastResponseData;
+          break;
+        }
+      } catch (err: any) {
+        lastResponseData = { error: err.message };
       }
-    } catch (err: any) {
-      console.error('SINTER Query error:', err);
-      const logEntry: SinterLog = {
-        id: `sinter-query-err-${Date.now()}`,
-        timestamp,
-        type: 'QUERY',
-        status: 'ERROR',
-        url: queryUrl,
-        responseExcerpt: err.message || 'Erro de rede ou de conexão ao servidor.'
-      };
-      sinterLogs.unshift(logEntry);
+    }
 
-      if (!hasValidDemo) {
-        res.status(404).json({
-          success: false,
-          error: `O ${type === 'cib' ? 'CIB' : 'número de Inscrição'} "${value}" não foi localizado no SINTER.`,
-          statusCode: 404,
-          details: err.message
-        });
-        return;
-      }
-
-      res.status(502).json({
+    if (realData) {
+      res.json({
+        success: true,
+        source: 'SINTER_OFFICIAL_API',
+        data: realData
+      });
+    } else {
+      res.status(lastStatus || 404).json({
         success: false,
-        error: 'Erro de comunicação de rede ao tentar consultar o SINTER.',
-        details: err.message,
-        demoFallback: getMockResponse(matchedProp) // Send the template as helper for sandbox demonstration
+        statusCode: lastStatus || 404,
+        error: lastStatus === 404 
+          ? `Imóvel (${type === 'cib' ? 'CIB' : 'Inscrição'}) "${cleanValue}" não localizado no cadastro oficial do SINTER (HTTP 404).`
+          : `A API oficial do SINTER retornou resposta de erro (HTTP ${lastStatus}).`,
+        details: lastResponseData
       });
     }
   });
