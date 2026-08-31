@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Copy, AlertCircle, BookOpen, Search, Filter, ShieldCheck, Tag } from 'lucide-react';
+import { Copy, AlertCircle, BookOpen, Search, Filter, ShieldCheck, Tag, FileText, Printer, Download } from 'lucide-react';
+import { ECibMirrorModal } from './ECibMirrorModal';
 
 interface QueryResultDisplayProps {
   data: any;
@@ -493,6 +494,7 @@ export const QueryResultDisplay: React.FC<QueryResultDisplayProps> = ({ data }) 
   const [activeSubTab, setActiveSubTab] = useState<'geral' | 'endereco' | 'proprietario' | 'itbi' | 'dominios' | 'json'>('geral');
   const [selectedDomainTab, setSelectedDomainTab] = useState<keyof typeof SINTER_DOMAINS>('tipoImovel');
   const [domainFilter, setDomainFilter] = useState('');
+  const [showECibModal, setShowECibModal] = useState(false);
 
   if (!data) return null;
 
@@ -627,11 +629,23 @@ export const QueryResultDisplay: React.FC<QueryResultDisplayProps> = ({ data }) 
             )}
           </h4>
         </div>
-        {data.Cib?.situacao && (
-          <div className="text-xs text-slate-300 font-mono text-right bg-[#1E1E1E] px-3 py-1.5 rounded-md border border-[#3D3D3D]">
-            Situação: <span className={`${isExtinto ? 'text-[#F2A900]' : 'text-[#008000]'} font-bold`}>{data.Cib.situacao}</span>
-          </div>
-        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setShowECibModal(true)}
+            className="bg-[#00509D] hover:bg-[#003B75] text-white font-bold text-xs px-3.5 py-2 rounded-lg transition-colors flex items-center space-x-2 cursor-pointer shadow-xs border border-blue-400/30"
+          >
+            <FileText className="w-4 h-4 text-blue-200" />
+            <span>Baixar espelho do e-CIB</span>
+          </button>
+
+          {data.Cib?.situacao && (
+            <div className="text-xs text-slate-300 font-mono text-right bg-[#1E1E1E] px-3 py-1.5 rounded-md border border-[#3D3D3D]">
+              Situação: <span className={`${isExtinto ? 'text-[#F2A900]' : 'text-[#008000]'} font-bold`}>{data.Cib.situacao}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Result Sub Tabs - Material Design Style with Underline */}
@@ -1172,6 +1186,11 @@ export const QueryResultDisplay: React.FC<QueryResultDisplayProps> = ({ data }) 
           </div>
         )}
       </div>
+
+      {/* e-CIB Mirror Printable Modal */}
+      {showECibModal && (
+        <ECibMirrorModal data={data} onClose={() => setShowECibModal(false)} />
+      )}
     </div>
   );
 };

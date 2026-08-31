@@ -94,10 +94,10 @@ export const Navbar: React.FC = () => {
             {/* Double-Line Typography Hierarchy */}
             <div className="flex flex-col justify-center min-w-0">
               <h1 className="text-sm sm:text-xl lg:text-2xl font-extrabold text-[#2B2B2B] tracking-tight leading-snug truncate sm:whitespace-normal">
-                Portal de Consulta Imobiliária Ilhéus
+                Portal de Consulta Cadastro Imobiliário Brasileiro (CIB)
               </h1>
               <p className="text-[10px] sm:text-xs lg:text-sm font-normal text-slate-500 mt-0.5 leading-tight truncate sm:whitespace-normal">
-                Secretaria de Cadastro Imobiliário – Ilhéus/BA
+                Secretaria da Fazenda e Orçamento – Ilhéus/BA
               </p>
             </div>
           </div>

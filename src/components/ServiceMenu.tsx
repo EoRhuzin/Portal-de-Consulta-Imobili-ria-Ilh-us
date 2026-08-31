@@ -40,7 +40,7 @@ function formatUserError(
       suggestions: [
         `Verifique se ${label} foi digitado corretamente.`,
         'Em caso de edificações novas ou desmembramentos recentes, a homologação no cadastro da Receita Federal pode estar em andamento.',
-        'Se necessitar de orientação sobre o cadastro municipal de Ilhéus, consulte a Secretaria de Tributos.'
+        'Se necessitar de orientação sobre o cadastro municipal de Ilhéus, consulte a Secretaria da Fazenda e Orçamento.'
       ]
     };
   }
@@ -87,7 +87,7 @@ function formatUserError(
 }
 
 export const ServiceMenu: React.FC = () => {
-  const [searchType, setSearchType] = React.useState<'cib' | 'inscricao'>('cib');
+  const [searchType, setSearchType] = React.useState<'cib' | 'inscricao'>('inscricao');
   const [searchValue, setSearchValue] = React.useState('');
   
   // Firestore database (consulta-imobiliaria-ilheus) configuration state
@@ -323,74 +323,47 @@ export const ServiceMenu: React.FC = () => {
 
         <div className="relative z-10 max-w-3xl">
           <h2 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white mb-2">
-            Como você deseja consultar?
+            Consulte o CIB do seu imóvel
           </h2>
 
-          <p className="text-slate-300 text-xs sm:text-sm mb-4 leading-relaxed max-w-2xl font-normal">
-            Informe a Inscrição Imobiliária do imóvel ou o código CIB para pesquisar e acessar os dados cadastrais, certidões e informações de titularidade atualizadas na API oficial do SINTER/Receita Federal.
-          </p>
-
-          {/* SINTER Search Mode Selector */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            <button
-              type="button"
-              onClick={() => setSearchType('cib')}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all shadow-xs cursor-pointer ${
-                searchType === 'cib'
-                  ? 'bg-[#00509D] text-white shadow-sm ring-1 ring-[#00509D]/50'
-                  : 'bg-[#3D3D3D] hover:bg-[#484848] text-slate-200 border border-[#525252]'
-              }`}
-            >
-              Consulta por CIB
-            </button>
-            <button
-              type="button"
-              onClick={() => setSearchType('inscricao')}
-              className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all shadow-xs cursor-pointer ${
-                searchType === 'inscricao'
-                  ? 'bg-[#00509D] text-white shadow-sm ring-1 ring-[#00509D]/50'
-                  : 'bg-[#3D3D3D] hover:bg-[#484848] text-slate-200 border border-[#525252]'
-              }`}
-            >
-              Consulta por Inscrição Imobiliária
-            </button>
+          <div className="text-slate-300 text-xs sm:text-sm mb-5 leading-relaxed max-w-2xl space-y-2 font-normal">
+            <p>
+              Utilize esta consulta para verificar se o imóvel possui <em>Cadastro Imobiliário Brasileiro (CIB)</em> vinculado à sua inscrição imobiliária municipal.
+            </p>
+            <p>
+              Digite o número da <em>inscrição imobiliária</em> do imóvel no campo abaixo e clique em <strong>Consultar</strong>.
+            </p>
           </div>
 
           {/* Direct Quick SINTER Search Form */}
-          <form onSubmit={handleQuickSubmit} className="bg-[#1E1E1E]/90 backdrop-blur-md p-2.5 sm:p-3 rounded-lg border border-[#3D3D3D] flex flex-col sm:flex-row gap-2.5 max-w-2xl shadow-2xl">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder={searchType === 'cib' ? "Informe o Código CIB (ex: C5SXGEBV)" : "Informe a Inscrição Imobiliária (ex: 69461)"}
-                value={searchValue}
-                onChange={(e) => setSearchValue(e.target.value)}
-                className="w-full bg-[#141414] text-white placeholder-slate-400 text-sm rounded-md pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#00509D] border border-[#444444] font-mono shadow-inner"
-              />
+          <form onSubmit={handleQuickSubmit} className="bg-[#1E1E1E]/90 backdrop-blur-md p-3.5 sm:p-4 rounded-lg border border-[#3D3D3D] flex flex-col gap-2.5 max-w-2xl shadow-2xl">
+            <label className="block text-xs font-semibold text-slate-200 tracking-wide">
+              Inscrição Imobiliária
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Digite o número da inscrição imobiliária"
+                  value={searchValue}
+                  onChange={(e) => setSearchValue(e.target.value)}
+                  className="w-full bg-[#141414] text-white placeholder-slate-400 text-sm rounded-md pl-10 pr-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#00509D] border border-[#444444] font-mono shadow-inner"
+                />
+              </div>
+              <button
+                type="submit"
+                className="bg-[#00509D] hover:bg-[#003F7A] text-white font-bold text-xs sm:text-sm px-6 py-2.5 rounded-md flex items-center justify-center space-x-2 transition-all shadow-lg shadow-[#00509D]/30 uppercase tracking-wider cursor-pointer active:scale-[0.99]"
+              >
+                <span>CONSULTAR</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="submit"
-              className="bg-[#00509D] hover:bg-[#003F7A] text-white font-semibold text-xs sm:text-sm px-6 py-2.5 rounded-md flex items-center justify-center space-x-2 transition-all shadow-lg shadow-[#00509D]/30 whitespace-nowrap cursor-pointer active:scale-[0.99]"
-            >
-              <span>Consultar no SINTER Oficial</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
           </form>
 
           {/* Shortcut search buttons */}
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-            <span className="font-medium text-slate-300">Exemplos de busca:</span>
-            <button 
-              type="button"
-              onClick={() => {
-                setSearchType('cib');
-                setSearchValue('C5SXGEBV');
-                handleQuerySinter('cib', 'C5SXGEBV');
-              }}
-              className="bg-[#3D3D3D] hover:bg-[#00509D] hover:text-white border border-[#4D4D4D] px-2.5 py-1 rounded transition-colors font-mono cursor-pointer shadow-xs"
-            >
-              CIB: C5SXGEBV
-            </button>
+            <span className="font-medium text-slate-300">Exemplo de busca:</span>
             <button 
               type="button"
               onClick={() => {

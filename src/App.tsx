@@ -16,7 +16,7 @@ export default function App() {
       {/* Footer */}
       <footer className="bg-[#2B2B2B] text-slate-300 border-t border-[#3A3A3A] py-6 text-xs text-center">
         <div className="max-w-7xl mx-auto px-4 space-y-2">
-          <p>© {new Date().getFullYear()} Prefeitura Municipal de Ilhéus — Secretaria de Cadastro Imobiliário. Todos os direitos reservados.</p>
+          <p>© {new Date().getFullYear()} Prefeitura Municipal de Ilhéus — Secretaria da Fazenda e Orçamento. Todos os direitos reservados.</p>
           <p className="text-slate-400">
             Painel Oficial de Integração Homologada em Tempo Real com o SINTER (Receita Federal do Brasil).
           </p>
